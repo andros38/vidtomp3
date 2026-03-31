@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoundRip — Video to MP3</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<style>
+  :root {
+    --bg: #080a0f;
+    --surface: #0e1219;
+    --border: #1c2230;
+    --accent: #00f5c4;
+    --accent2: #ff4d6d;
+    --accent3: #7b61ff;
+    --text: #e8edf5;
+    --muted: #4a5568;
+    --glow: 0 0 30px rgba(0,245,196,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,196,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,196,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Radial glow */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 600px;
+    background: radial-gradient(ellipse, rgba(0,245,196,0.04) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 60px 24px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 60px;
+  }
+
+  .logo-tag {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(0,245,196,0.3);
+    padding: 5px 14px;
+    border-radius: 2px;
+    margin-bottom: 20px;
+    background: rgba(0,245,196,0.05);
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(64px, 12vw, 110px);
+    line-height: 0.9;
+    letter-spacing: 2px;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+
+  h1 span {
+    color: var(--accent);
+    text-shadow: 0 0 40px rgba(0,245,196,0.4);
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    line-height: 1.6;
+  }
+
+  /* Drop Zone */
+  .drop-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .drop-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(0,245,196,0.04) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .drop-zone:hover,
+  .drop-zone.dragover {
+    border-color: var(--accent);
+    box-shadow: var(--glow), inset 0 0 40px rgba(0,245,196,0.03);
+  }
+
+  .drop-zone:hover::before,
+  .drop-zone.dragover::before {
+    opacity: 1;
+  }
+
+  .drop-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    border-radius: 50%;
+    background: rgba(0,245,196,0.08);
+    border: 1px solid rgba(0,245,196,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s;
+  }
+
+  .drop-zone:hover .drop-icon { transform: scale(1.1); }
+
+  .drop-icon svg { width: 28px; height: 28px; }
+
+  .drop-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .drop-sub {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .drop-formats {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .format-badge {
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 3px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: rgba(255,255,255,0.02);
+  }
+
+  input[type="file"] { display: none; }
+
+  /* File Info */
+  .file-info {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-top: 16px;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .file-info.visible { display: flex; }
+
+  .file-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: rgba(123,97,255,0.12);
+    border: 1px solid rgba(123,97,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .file-details { flex: 1; min-width: 0; }
+
+  .file-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+
+  .file-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .file-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: flex;
+  }
+
+  .file-remove:hover { color: var(--accent2); background: rgba(255,77,109,0.1); }
+
+  /* Settings Panel */
+  .settings {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 16px;
+  }
+
+  .settings.visible { display: block; }
+
+  .settings-title {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .setting-row:last-child { border-bottom: none; }
+
+  .setting-label {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .setting-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .setting-control select {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .setting-control select:focus {
+    border-color: var(--accent);
+  }
+
+  .setting-control select option {
+    background: #0e1219;
+  }
+
+  /* Waveform Visualizer */
+  .waveform-container {
+    display: none;
+    margin-top: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .waveform-container.visible { display: block; }
+
+  .waveform-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .waveform-status {
+    color: var(--accent);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  canvas#waveform {
+    width: 100%;
+    height: 80px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  /* Progress */
+  .progress-wrap {
+    margin-top: 12px;
+  }
+
+  .progress-bar-bg {
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent3), var(--accent));
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 10px rgba(0,245,196,0.5);
+  }
+
+  .progress-text {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .progress-pct {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* Convert Button */
+  .btn-convert {
+    width: 100%;
+    margin-top: 20px;
+    padding: 18px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-convert::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s;
+  }
+
+  .btn-convert:hover:not(:disabled)::before {
+    transform: translateX(100%);
+  }
+
+  .btn-convert:hover:not(:disabled) {
+    box-shadow: 0 0 40px rgba(0,245,196,0.4);
+    transform: translateY(-1px);
+  }
+
+  .btn-convert:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .btn-convert.processing {
+    background: linear-gradient(90deg, var(--accent3), var(--accent));
+    animation: shimmer 2s linear infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+
+  /* Result Card */
+  .result-card {
+    display: none;
+    background: rgba(0,245,196,0.04);
+    border: 1px solid rgba(0,245,196,0.25);
+    border-radius: 12px;
+    padding: 28px 24px;
+    margin-top: 16px;
+    text-align: center;
+  }
+
+  .result-card.visible { display: block; }
+
+  .result-icon {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: rgba(0,245,196,0.1);
+    border: 1.5px solid rgba(0,245,196,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .result-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .result-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .btn-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 32px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.3s;
+    letter-spacing: 0.5px;
+    margin: 4px;
+  }
+
+  .btn-download:hover {
+    box-shadow: 0 0 30px rgba(0,245,196,0.35);
+    transform: translateY(-2px);
+  }
+
+  .btn-new {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 24px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin: 4px;
+  }
+
+  .btn-new:hover {
+    color: var(--text);
+    border-color: var(--muted);
+  }
+
+  /* Error */
+  .error-box {
+    display: none;
+    background: rgba(255,77,109,0.06);
+    border: 1px solid rgba(255,77,109,0.3);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--accent2);
+    line-height: 1.6;
+  }
+
+  .error-box.visible { display: block; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 60px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    line-height: 2;
+  }
+
+  .footer span { color: var(--accent3); }
+
+  /* Animated bars decoration */
+  .bars-deco {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 24px;
+    margin: 0 auto 24px;
+    width: fit-content;
+  }
+
+  .bars-deco span {
+    width: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    opacity: 0.6;
+    animation: barAnim 1.2s ease-in-out infinite;
+  }
+
+  .bars-deco span:nth-child(1) { height: 40%; animation-delay: 0s; }
+  .bars-deco span:nth-child(2) { height: 80%; animation-delay: 0.1s; }
+  .bars-deco span:nth-child(3) { height: 60%; animation-delay: 0.2s; }
+  .bars-deco span:nth-child(4) { height: 100%; animation-delay: 0.3s; }
+  .bars-deco span:nth-child(5) { height: 70%; animation-delay: 0.4s; }
+  .bars-deco span:nth-child(6) { height: 45%; animation-delay: 0.5s; }
+  .bars-deco span:nth-child(7) { height: 85%; animation-delay: 0.35s; }
+  .bars-deco span:nth-child(8) { height: 55%; animation-delay: 0.25s; }
+
+  @keyframes barAnim {
+    0%, 100% { transform: scaleY(0.5); opacity: 0.4; }
+    50% { transform: scaleY(1); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="bars-deco">
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <div class="logo-tag">⚡ Audio Extractor v1.0</div>
+    <h1>SOUND<span>RIP</span></h1>
+    <p class="subtitle">
+      Konversi video apa pun menjadi file MP3 berkualitas tinggi.<br>
+      100% berjalan di browser — tidak ada upload ke server.
+    </p>
+  </div>
+
+  <!-- Drop Zone -->
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept="video/*,audio/*">
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+      </svg>
+    </div>
+    <div class="drop-title">Seret & Lepas File Video</div>
+    <p class="drop-sub">
+      atau klik untuk memilih file dari komputer Anda
+    </p>
+    <div class="drop-formats">
+      <span class="format-badge">MP4</span>
+      <span class="format-badge">MKV</span>
+      <span class="format-badge">AVI</span>
+      <span class="format-badge">MOV</span>
+      <span class="format-badge">WEBM</span>
+      <span class="format-badge">FLV</span>
+      <span class="format-badge">WMV</span>
+      <span class="format-badge">M4V</span>
+    </div>
+  </div>
+
+  <!-- File Info -->
+  <div class="file-info" id="fileInfo">
+    <div class="file-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent3)" stroke-width="1.5">
+        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+        <path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/>
+      </svg>
+    </div>
+    <div class="file-details">
+      <div class="file-name" id="fileName">—</div>
+      <div class="file-meta" id="fileMeta">—</div>
+    </div>
+    <button class="file-remove" id="removeFile" title="Hapus file">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings" id="settings">
+    <div class="settings-title">⚙ Pengaturan Output</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Kualitas MP3</div>
+        <div class="setting-desc">Bitrate audio untuk file output</div>
+      </div>
+      <div class="setting-control">
+        <select id="bitrate">
+          <option value="320">320 kbps — Lossless</option>
+          <option value="256">256 kbps — Sangat Tinggi</option>
+          <option value="192">192 kbps — Tinggi</option>
+          <option value="128" selected>128 kbps — Standar</option>
+          <option value="96">96 kbps — Sedang</option>
+        </select>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Channel</div>
+        <div class="setting-desc">Stereo atau Mono</div>
+      </div>
+      <div class="setting-control">
+        <select id="channels">
+          <option value="2" selected>Stereo (2ch)</option>
+          <option value="1">Mono (1ch)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Waveform + Progress -->
+  <div class="waveform-container" id="waveformWrap">
+    <div class="waveform-label">
+      <span>Waveform Audio</span>
+      <span class="waveform-status" id="waveStatus">● Memproses...</span>
+    </div>
+    <canvas id="waveform" width="700" height="80"></canvas>
+    <div class="progress-wrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-text">
+        <span id="progressLabel">Menganalisis audio...</span>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Convert Button -->
+  <button class="btn-convert" id="convertBtn" disabled>
+    KONVERSI KE MP3
+  </button>
+
+  <!-- Result -->
+  <div class="result-card" id="resultCard">
+    <div class="result-icon">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <div class="result-title">Konversi Berhasil! 🎵</div>
+    <div class="result-meta" id="resultMeta">File MP3 siap diunduh</div>
+    <a id="downloadLink" class="btn-download" download>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Unduh MP3
+    </a>
+    <button class="btn-new" id="newConvert">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="1 4 1 10 7 10"/>
+        <path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+      </svg>
+      Konversi Baru
+    </button>
+  </div>
+
+  <!-- Error -->
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Diproses sepenuhnya di browser Anda — <span>privasi terjamin</span><br>
+    Menggunakan <span>Web Audio API</span> + <span>LAME MP3 Encoder</span>
+  </div>
+</div>
+
+<script>
+let selectedFile = null;
+let mp3Blob = null;
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileInfo = document.getElementById('fileInfo');
+const fileNameEl = document.getElementById('fileName');
+const fileMetaEl = document.getElementById('fileMeta');
+const removeFileBtn = document.getElementById('removeFile');
+const settingsEl = document.getElementById('settings');
+const waveformWrap = document.getElementById('waveformWrap');
+const waveCanvas = document.getElementById('waveform');
+const waveStatus = document.getElementById('waveStatus');
+const progressFill = document.getElementById('progressFill');
+const progressLabel = document.getElementById('progressLabel');
+const progressPct = document.getElementById('progressPct');
+const convertBtn = document.getElementById('convertBtn');
+const resultCard = document.getElementById('resultCard');
+const resultMeta = document.getElementById('resultMeta');
+const downloadLink = document.getElementById('downloadLink');
+const newConvertBtn = document.getElementById('newConvert');
+const errorBox = document.getElementById('errorBox');
+
+// Drag & Drop
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+removeFileBtn.addEventListener('click', resetState);
+newConvertBtn.addEventListener('click', resetState);
+
+function handleFile(file) {
+  selectedFile = file;
+  fileNameEl.textContent = file.name;
+  fileMetaEl.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type || 'video/unknown'}`;
+  fileInfo.classList.add('visible');
+  settingsEl.classList.add('visible');
+  convertBtn.disabled = false;
+  resultCard.classList.remove('visible');
+  errorBox.classList.remove('visible');
+  waveformWrap.classList.remove('visible');
+}
+
+function resetState() {
+  selectedFile = null;
+  mp3Blob = null;
+  fileInput.value = '';
+  fileInfo.classList.remove('visible');
+  settingsEl.classList.remove('visible');
+  waveformWrap.classList.remove('visible');
+  resultCard.classList.remove('visible');
+  errorBox.classList.remove('visible');
+  convertBtn.disabled = true;
+  convertBtn.textContent = 'KONVERSI KE MP3';
+  convertBtn.classList.remove('processing');
+  convertBtn.disabled = false;
+}
+
+function setProgress(pct, label) {
+  progressFill.style.width = pct + '%';
+  progressPct.textContent = pct + '%';
+  progressLabel.textContent = label;
+}
+
+function showError(msg) {
+  errorBox.textContent = '⚠ ' + msg;
+  errorBox.classList.add('visible');
+  convertBtn.disabled = false;
+  convertBtn.textContent = 'COBA LAGI';
+  convertBtn.classList.remove('processing');
+}
+
+function drawWaveform(channelData) {
+  const ctx = waveCanvas.getContext('2d');
+  const W = waveCanvas.width;
+  const H = waveCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const samples = channelData.length;
+  const step = Math.ceil(samples / W);
+  const mid = H / 2;
+
+  ctx.strokeStyle = 'rgba(0,245,196,0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+
+  for (let x = 0; x < W; x++) {
+    let min = 1.0, max = -1.0;
+    for (let j = 0; j < step; j++) {
+      const v = channelData[x * step + j] || 0;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    const yMin = mid + min * mid * 0.85;
+    const yMax = mid + max * mid * 0.85;
+    ctx.moveTo(x, yMin);
+    ctx.lineTo(x, yMax);
+  }
+  ctx.stroke();
+
+  // Glow overlay
+  const gradient = ctx.createLinearGradient(0, 0, W, 0);
+  gradient.addColorStop(0, 'rgba(123,97,255,0.3)');
+  gradient.addColorStop(0.5, 'rgba(0,245,196,0.15)');
+  gradient.addColorStop(1, 'rgba(123,97,255,0.3)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+}
+
+convertBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+
+  errorBox.classList.remove('visible');
+  resultCard.classList.remove('visible');
+  waveformWrap.classList.add('visible');
+  convertBtn.disabled = true;
+  convertBtn.classList.add('processing');
+  convertBtn.textContent = 'MEMPROSES...';
+
+  const bitrate = parseInt(document.getElementById('bitrate').value);
+  const channels = parseInt(document.getElementById('channels').value);
+
+  try {
+    // Decode audio
+    setProgress(10, 'Membaca file video...');
+    waveStatus.textContent = '● Membaca file...';
+
+    const arrayBuffer = await selectedFile.arrayBuffer();
+
+    setProgress(25, 'Mendekode audio...');
+    waveStatus.textContent = '● Mendekode audio...';
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    let audioBuffer;
+    
+    try {
+      audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    } catch(e) {
+      throw new Error('Format video tidak didukung browser ini. Coba file MP4 atau WebM.');
+    }
+
+    // Draw waveform
+    setProgress(40, 'Menggambar waveform...');
+    waveStatus.textContent = '● Menganalisis gelombang...';
+    drawWaveform(audioBuffer.getChannelData(0));
+
+    setProgress(50, 'Menyiapkan encoder MP3...');
+    waveStatus.textContent = '● Encoding MP3...';
+
+    // Encode to MP3
+    const numChannels = Math.min(channels, audioBuffer.numberOfChannels);
+    const sampleRate = audioBuffer.sampleRate;
+    const leftData = audioBuffer.getChannelData(0);
+    const rightData = numChannels > 1 && audioBuffer.numberOfChannels > 1
+      ? audioBuffer.getChannelData(1) : leftData;
+
+    const mp3enc = new lamejs.Mp3Encoder(numChannels, sampleRate, bitrate);
+    const mp3Data = [];
+    const CHUNK = 1152;
+
+    let processed = 0;
+    const total = leftData.length;
+
+    // Convert Float32 → Int16
+    function floatTo16Bit(f32arr) {
+      const i16 = new Int16Array(f32arr.length);
+      for (let i = 0; i < f32arr.length; i++) {
+        const s = Math.max(-1, Math.min(1, f32arr[i]));
+        i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      return i16;
+    }
+
+    const leftPCM = floatTo16Bit(leftData);
+    const rightPCM = numChannels > 1 ? floatTo16Bit(rightData) : leftPCM;
+
+    // Encode in chunks
+    while (processed < total) {
+      const end = Math.min(processed + CHUNK, total);
+      const lChunk = leftPCM.subarray(processed, end);
+      const rChunk = rightPCM.subarray(processed, end);
+
+      let buf;
+      if (numChannels === 1) {
+        buf = mp3enc.encodeBuffer(lChunk);
+      } else {
+        buf = mp3enc.encodeBuffer(lChunk, rChunk);
+      }
+      if (buf.length > 0) mp3Data.push(buf);
+
+      processed = end;
+      const pct = 50 + Math.round((processed / total) * 45);
+      setProgress(pct, `Encoding... ${Math.round(processed/total*100)}%`);
+
+      // Yield to UI thread
+      if (processed % (CHUNK * 100) === 0 || processed >= total) {
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    const finalBuf = mp3enc.flush();
+    if (finalBuf.length > 0) mp3Data.push(finalBuf);
+
+    setProgress(98, 'Menyusun file MP3...');
+
+    mp3Blob = new Blob(mp3Data, { type: 'audio/mp3' });
+    const url = URL.createObjectURL(mp3Blob);
+
+    const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
+    const outputName = baseName + '.mp3';
+    const duration = audioBuffer.duration;
+    const mins = Math.floor(duration / 60);
+    const secs = Math.floor(duration % 60).toString().padStart(2, '0');
+
+    downloadLink.href = url;
+    downloadLink.download = outputName;
+    resultMeta.textContent = `${outputName} · ${(mp3Blob.size/1024/1024).toFixed(2)} MB · ${mins}:${secs} · ${bitrate} kbps`;
+
+    setProgress(100, 'Selesai!');
+    waveStatus.textContent = '✓ Selesai';
+    waveStatus.style.animation = 'none';
+    waveStatus.style.color = 'var(--accent)';
+
+    await new Promise(r => setTimeout(r, 400));
+
+    resultCard.classList.add('visible');
+    convertBtn.textContent = 'KONVERSI KE MP3';
+    convertBtn.classList.remove('processing');
+    convertBtn.disabled = false;
+
+    audioCtx.close();
+
+  } catch(err) {
+    console.error(err);
+    showError(err.message || 'Terjadi kesalahan saat mengonversi. Pastikan file video valid.');
+  }
+});
+</script>
+</body>
+</html>
